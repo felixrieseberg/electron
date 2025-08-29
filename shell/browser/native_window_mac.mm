@@ -380,6 +380,7 @@ void NativeWindowMac::CloseImmediately() {
   while (!child_windows_.empty()) {
     auto* child = child_windows_.back();
     child->RemoveChildFromParentWindow();
+    child->CloseImmediately();
   }
 
   [window_ close];

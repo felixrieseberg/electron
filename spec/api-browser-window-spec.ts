@@ -5196,23 +5196,27 @@ describe('BrowserWindow module', () => {
         expect(w.getChildWindows().length).to.equal(0);
       });
 
-      ifit(process.platform === 'darwin')('can reparent when the first parent is destroyed', async () => {
-        const w1 = new BrowserWindow({ show: false });
-        const w2 = new BrowserWindow({ show: false });
-        const c = new BrowserWindow({ show: false });
+      it('destroys child windows when parent is destroyed', async () => {
+        const parent = new BrowserWindow({ show: false });
+        const child1 = new BrowserWindow({ show: false });
+        const child2 = new BrowserWindow({ show: false });
 
-        c.setParentWindow(w1);
-        expect(w1.getChildWindows().length).to.equal(1);
+        child1.setParentWindow(parent);
+        child2.setParentWindow(parent);
+        expect(parent.getChildWindows().length).to.equal(2);
 
-        const closed = once(w1, 'closed');
-        w1.destroy();
-        await closed;
+        const parentClosed = once(parent, 'closed');
+        const child1Closed = once(child1, 'closed');
+        const child2Closed = once(child2, 'closed');
 
-        c.setParentWindow(w2);
-        await setTimeout();
+        parent.destroy();
 
-        const children = w2.getChildWindows();
-        expect(children[0]).to.equal(c);
+        await parentClosed;
+        await child1Closed;
+        await child2Closed;
+
+        expect(child1.isDestroyed()).to.be.true('child1 should be destroyed');
+        expect(child2.isDestroyed()).to.be.true('child2 should be destroyed');
       });
     });
 
