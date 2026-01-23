@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Felix Rieseberg <f@anthropic.com>
+Date: Thu, 22 Jan 2026 21:34:25 -0800
+Subject: feat: allow embedders to override file URL loader factory for
+ downloads
+
+The download manager uses a hardcoded FileURLLoaderFactory for file://
+URL downloads. This prevents embedders like Electron from using custom
+URL loader factories (e.g., ASAR-aware loaders) for file:// downloads.
+
+This change calls RegisterNonNetworkSubresourceURLLoaderFactories in the
+file:// download path, pre-populating the factory map with the default
+FileURLLoaderFactory. This allows embedders to detect and replace it with
+their own implementation while maintaining backward compatibility.
+
+diff --git a/content/browser/download/download_manager_impl.cc b/content/browser/download/download_manager_impl.cc
+index 7bedb1b17a20aad1730c959c03576ca3ff810e76..c985c41bdd02fd8d5a815ccdafb198c55f26f25c 100644
+--- a/content/browser/download/download_manager_impl.cc
++++ b/content/browser/download/download_manager_impl.cc
+@@ -1450,14 +1450,22 @@ void DownloadManagerImpl::BeginResourceDownloadOnChecksComplete(
+     DCHECK(params->url().SchemeIsBlob());
+     pending_url_loader_factory = blob_url_loader_factory->Clone();
+   } else if (params->url().SchemeIsFile()) {
++    ContentBrowserClient::NonNetworkURLLoaderFactoryMap factories;
++    factories.emplace(url::kFileScheme, FileURLLoaderFactory::Create(
++        browser_context_->GetPath(),
++        browser_context_->GetSharedCorsOriginAccessList(),
++        base::TaskPriority::USER_VISIBLE));
++    if (rfh) {
++      GetContentClient()
++          ->browser()
++          ->RegisterNonNetworkSubresourceURLLoaderFactories(
++              params->render_process_host_id(),
++              params->render_frame_host_routing_id(), params->initiator(),
++              &factories);
++    }
+     pending_url_loader_factory =
+         std::make_unique<network::WrapperPendingSharedURLLoaderFactory>(
+-            FileURLLoaderFactory::Create(
+-                browser_context_->GetPath(),
+-                browser_context_->GetSharedCorsOriginAccessList(),
+-                // USER_VISIBLE because download should progress
+-                // even when there is high priority work to do.
+-                base::TaskPriority::USER_VISIBLE));
++            std::move(factories.extract(url::kFileScheme).mapped()));
+   } else if (rfh && params->url().SchemeIs(content::kChromeUIScheme)) {
+     pending_url_loader_factory =
+         std::make_unique<network::WrapperPendingSharedURLLoaderFactory>(

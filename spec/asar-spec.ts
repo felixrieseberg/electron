@@ -130,6 +130,39 @@ describe('asar package', () => {
       });
     });
   });
+
+  describe('file download', () => {
+    it('can download a file from an asar archive', async () => {
+      const w = new BrowserWindow({ show: false });
+      await w.loadFile(path.join(asarDir, 'web.asar', 'index.html'));
+
+      const downloadUrl = url.format({
+        pathname: path.join(asarDir, 'pdf.asar', 'cat.pdf').replaceAll('\\', '/'),
+        protocol: 'file',
+        slashes: true
+      });
+
+      const downloadFilePath = path.join(fixtures, '..', 'download-asar-test.pdf');
+      try {
+        const willDownload = once(w.webContents.session, 'will-download');
+        w.webContents.downloadURL(downloadUrl);
+        const [, item] = await willDownload as [any, Electron.DownloadItem];
+        item.savePath = downloadFilePath;
+        const [, state] = await once(item, 'done');
+        expect(state).to.equal('completed');
+        expect(importedFs.existsSync(downloadFilePath)).to.equal(true);
+        // Verify the downloaded file matches the original
+        const originalContent = importedFs.readFileSync(path.join(fixtures, 'cat.pdf'));
+        const downloadedContent = importedFs.readFileSync(downloadFilePath);
+        expect(downloadedContent.length).to.equal(originalContent.length);
+        expect(downloadedContent.equals(originalContent)).to.equal(true);
+      } finally {
+        if (importedFs.existsSync(downloadFilePath)) {
+          importedFs.unlinkSync(downloadFilePath);
+        }
+      }
+    });
+  });
 });
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
